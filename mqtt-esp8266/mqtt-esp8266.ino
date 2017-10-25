@@ -33,6 +33,14 @@ extern "C" {
 #include "user_interface.h"
 }
 
+#define UP_PIN 5        // D1
+#define DOWN_PIN 4      // D2
+#define LEFT_PIN 14     // D5
+#define RIGHT_PIN 12    // D6
+// #define DETECT_PIN 13   // D7
+#define DETECT_PIN 9   // SD2
+#define DETECT_PIN2 10   // SD3
+
 // config device command
 const char* server_arduino = "server_arduino";
 const char* esp_arduino = "esp_arduino";
@@ -42,25 +50,25 @@ const char* esp_arduino = "esp_arduino";
 #define mac_address_request "mac_address_request"
 #define data "data"
 
-#define UPDOWN_PIN 5
-#define LEFTRIGHT_PIN 4
+int state = HIGH;
+int previousState = LOW;
 
 String chipIdEsp = "";
 String mac_address = "";
 
-const byte RX = 4;
-const byte TX = 5;
+// const byte RX = 4;
+// const byte TX = 5;
 
-SoftwareSerial mySerial(RX, TX, false, 256);
-SerialCommand sCmd(mySerial); // Khai báo biến sử dụng thư viện Serial Command
+// SoftwareSerial mySerial(RX, TX, false, 256);
+// SerialCommand sCmd(mySerial); // Khai báo biến sử dụng thư viện Serial Command
 
 // Update these with values suitable for your network.
-const char* SSID = "Phong Ky Thuat";
-const char* PASSWORD = "123456789";
+const char* SSID = "dlink_DWR-710_CA58";
+const char* PASSWORD = "RXbgc83862";
 const char* MQTT_SERVER = "113.161.21.15";
 
-const char* PUBLISH_TOPIC = "outTopic";
-const char* SUBSCRIBE_TOPIC = "miner";
+const char* PUBLISH_TOPIC = "miner";
+const char* SUBSCRIBE_TOPIC = "controller";
 
 const char* get_chipID = "get_chipID";
 uint32_t chipID;
@@ -78,32 +86,25 @@ int value = 0;
 
 void setup() {
 
-    pinMode(UPDOWN_PIN, OUTPUT);     
-    pinMode(LEFTRIGHT_PIN, OUTPUT);    
-     
+    pinMode(UP_PIN, OUTPUT);
+    pinMode(DOWN_PIN, OUTPUT);
+    pinMode(RIGHT_PIN, OUTPUT);
+    pinMode(LEFT_PIN, OUTPUT);
+    pinMode(DETECT_PIN, INPUT_PULLUP);
+    pinMode(DETECT_PIN2, OUTPUT);
+
+    digitalWrite(UP_PIN, HIGH);
+    digitalWrite(DOWN_PIN, HIGH);
+    digitalWrite(LEFT_PIN, HIGH);
+    digitalWrite(RIGHT_PIN, HIGH);
+    digitalWrite(DETECT_PIN2, HIGH);
+
     Serial.begin(115200);
-    mySerial.begin(115200); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
+//    mySerial.begin(115200); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
     delay(10);
 
-    setup_wifi();
-    client.setServer(MQTT_SERVER, 1884);
-    client.setCallback(callback);
-
-    chipID = ESP.getChipId();
-    // sCmd.addDefaultHandler(defaultCommand);
-
-    // Một số hàm trong thư viện Serial Command
-    sCmd.addCommand(server_arduino, requestResponse);   //Khi có lệnh thì thực hiện hàm "rxRequestServer"
-//    sCmd.addCommand(esp_arduino, rxRequest);        //Khi có lệnh thì thực hiện hàm "rxResponseEsp"
-//sCmd.addDefaultHandler(defaultCommand);
-
-
-}
-
-void setup_wifi() {
-
-    delay(10);
     // We start by connecting to a WiFi network
+    // connectWifi();
     Serial.println();
     Serial.print("Connecting to ");
     Serial.println(SSID);
@@ -120,46 +121,97 @@ void setup_wifi() {
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
+    client.setServer(MQTT_SERVER, 1884);
+    client.setCallback(callback);
+
+    // chipID = ESP.getChipId();
+    // sCmd.addDefaultHandler(defaultCommand);
+
+    // Một số hàm trong thư viện Serial Command
+    // sCmd.addCommand(server_arduino, requestResponse);   //Khi có lệnh thì thực hiện hàm "rxRequestServer"
+    //    sCmd.addCommand(esp_arduino, rxRequest);        //Khi có lệnh thì thực hiện hàm "rxResponseEsp"
+    //sCmd.addDefaultHandler(defaultCommand);
+
+
+}
+
+void connectWifi() {
+    // We start by connecting to a WiFi network
+    Serial.println();
+    Serial.print("Connecting to ");
+    Serial.println(SSID);
+
+    WiFi.begin(SSID, PASSWORD);
+    delay(500);
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Not connect");
+    } else {
+        Serial.println("");
+        Serial.println("WiFi connected");
+        Serial.println("IP address: ");
+        Serial.println(WiFi.localIP());
+    }
 
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
     String jsonStr = "";
-//    Serial.print("Message arrived [");
-//    Serial.print(topic);
-//    Serial.print("] ");
+    //    Serial.print("Message arrived [");
+    //    Serial.print(topic);
+    //    Serial.print("] ");
     for (int i = 0; i < length; i++) {
         //Serial.print((char)payload[i]);
         jsonStr += (char)payload[i];
     }
-//    Serial.println(jsonStr);
+    //    Serial.println(jsonStr);
     StaticJsonBuffer<200> jsonBuffer;
-    JsonObject& root = jsonBuffer.parseObject(jsonStr); 
+    JsonObject& root = jsonBuffer.parseObject(jsonStr);
 
     unsigned int updownValue = root["updown"];
     unsigned int leftrightValue = root["leftright"];
     Serial.print("updown value: ");
-    Serial.println(updownValue);
-    Serial.print("leftright value: ");
+    Serial.print(updownValue);
+    Serial.print("----leftright value: ");
     Serial.println(leftrightValue);
 
-    if(updownValue > 3000) {
-        digitalWrite(UPDOWN_PIN, 1);  // up
-    }else if (updownValue < 1000) {
-        digitalWrite(UPDOWN_PIN, 0);  // down
+    if (updownValue < 1000) {
+        // set "down"
+        digitalWrite(UP_PIN, HIGH);
+        digitalWrite(DOWN_PIN, LOW);
+        Serial.print("DOWN");
+    } else if (updownValue > 1000 && updownValue < 3000) {
+        // set "đứng yên"
+        digitalWrite(UP_PIN, HIGH);
+        digitalWrite(DOWN_PIN, HIGH);
+    } else if (updownValue > 3000) {
+        // set "up"
+        digitalWrite(UP_PIN, LOW);
+        digitalWrite(DOWN_PIN, HIGH);
+        Serial.print("UP");
     }
 
-    if(leftrightValue > 3000) {
-        digitalWrite(LEFTRIGHT_PIN, 1);  // left     
-    }else if (leftrightValue < 1000) {
-        digitalWrite(LEFTRIGHT_PIN, 0);  // right     
+    if (leftrightValue < 1000) {
+        // set "RIGHT"
+        digitalWrite(LEFT_PIN, HIGH);
+        digitalWrite(RIGHT_PIN, LOW);
+        Serial.println("-RIGHT");
+    } else if (leftrightValue > 1000 && leftrightValue < 3000) {
+        // set "đứng yên"
+        digitalWrite(LEFT_PIN, HIGH);
+        digitalWrite(RIGHT_PIN, HIGH);
+        Serial.println("-");
+    } else if (leftrightValue > 3000) {
+        // set "LEFT"
+        digitalWrite(LEFT_PIN, LOW);
+        digitalWrite(RIGHT_PIN, HIGH);
+        Serial.println("-LEFT");
     }
-    
-    
-//    mySerial.print("ARDUINO");
-//    mySerial.print('\r');
-//    mySerial.print(jsonStr);
-//    mySerial.print('\r');
+
+
+    //    mySerial.print("ARDUINO");
+    //    mySerial.print('\r');
+    //    mySerial.print(jsonStr);
+    //    mySerial.print('\r');
 
 }
 
@@ -186,13 +238,47 @@ void reconnect() {
     }
 }
 void loop() {
-
+    // Kiểm tra kết nối Wifi
+    while (WiFi.status() != WL_CONNECTED) {
+        connectWifi();
+    }
+    // Kiểm tra kết nối Mqtt Server
     if (!client.connected()) {
         reconnect();
     }
     client.loop();  //
+    state = digitalRead(DETECT_PIN);
+     
+    if (state == LOW) {
+        delay(10);
+        if (digitalRead(DETECT_PIN) == LOW) {
+            digitalWrite(DETECT_PIN2, LOW);  
+            previousState = state;
+            StaticJsonBuffer<200> jsonBuffer;
+            JsonObject& root = jsonBuffer.createObject();
+            root["detect"] = "ON";
 
-//    sCmd.readSerial();  //
+            char JSONmessageBuffer[100];
+            root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+            client.publish(PUBLISH_TOPIC, JSONmessageBuffer);
+        }
+    }
+    if (state == HIGH) {
+        delay(10);
+        if (digitalRead(DETECT_PIN) == HIGH && state != previousState) {
+            digitalWrite(DETECT_PIN2, HIGH);  
+            previousState = state;
+            StaticJsonBuffer<200> jsonBuffer;
+            JsonObject& root = jsonBuffer.createObject();
+            root["detect"] = "OFF";
+
+            char JSONmessageBuffer[100];
+            root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+            client.publish(PUBLISH_TOPIC, JSONmessageBuffer);
+        }
+    }
+
+    //    sCmd.readSerial();  //
 
 }
 
@@ -202,13 +288,13 @@ void loop() {
     }
 */
 
-void defaultCommand(char *command) {
+/*void defaultCommand(char *command) {
     char *json = sCmd.next();
     client.publish("PUBLISH_TOPIC", json);
 }
 
 void requestResponse() {
-//    Serial.println(deviceCmd);
+    //    Serial.println(deviceCmd);
     Serial.println(esp_arduino);
     char *json = sCmd.next(); //Chỉ cần một dòng này để đọc tham số nhận đươc
     Serial.println(json);
@@ -218,13 +304,13 @@ void requestResponse() {
     String requestCmd = root["request"];
     String response = root["response"];
 
-    if(requestCmd==mac_address_request){
+    if (requestCmd == mac_address_request) {
         //txResponse(deviceCmd, requestCmd, mac_address);
     }
-    if(response==data){
+    if (response == data) {
         client.publish("PUBLISH_TOPIC", json);
     }
-}
+}*/
 
 
 

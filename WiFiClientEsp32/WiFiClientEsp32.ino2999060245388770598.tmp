@@ -9,13 +9,10 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <LiquidCrystal_I2C.h>
 
 #define PIN_ADC3 34
 #define PIN_ADC2 35
 #define PIN_DETECT 13
-
-int detectState = HIGH;
 
 const char* SSID = "dlink_DWR-710_CA58";
 const char* PASSWORD = "RXbgc83862";
@@ -24,7 +21,6 @@ const char* MQTT_SERVER = "113.161.21.15";
 const char* PUBLISH_TOPIC = "controller";
 const char* SUBSCRIBE_TOPIC = "miner";
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); // set the LCD address to 0x27 for a 16 chars and 2 line display
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -44,7 +40,7 @@ void setup()
     delay(10);
     pinMode(PIN_DETECT, OUTPUT);
     digitalWrite(PIN_DETECT, HIGH);
-
+    
     // We start by connecting to a WiFi network
     // connectWifi();
     Serial.println();
@@ -65,14 +61,6 @@ void setup()
 
     client.setServer(MQTT_SERVER, 1884);
     client.setCallback(callback);
-
-    lcd.begin(12, 14);                      // initialize the lcd
-    // Print a message to the LCD.
-    lcd.backlight();
-    lcd.setCursor(0, 0);
-    lcd.print("DETECT MINE");
-    lcd.setCursor(0, 1);
-    lcd.print("OFF");
 }
 
 void connectWifi() {
@@ -106,19 +94,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
     JsonObject& root = jsonBuffer.parseObject(jsonStr);
 
     String detect = root["detect"];
-    if (detect == "ON") {
-        Serial.println("detect: ON");
-        detectState = LOW;
+    if (detect = "ON") {
+        Serial.print("detect: ON");
         digitalWrite(PIN_DETECT, LOW);
-        displayLCD(detectState);
-        //        delay(100);
-    }
-    if (detect == "OFF") {
-        Serial.println("detect: OFF");
-        detectState = HIGH;
+        delay(200);
         digitalWrite(PIN_DETECT, HIGH);
-        displayLCD(detectState);
-        //        delay(100);
     }
 }
 
@@ -145,7 +125,6 @@ void reconnect() {
 
 void loop()
 {
-//    displayLCD(detectState);
     // Kiểm tra kết nối Wifi
     while (WiFi.status() != WL_CONNECTED) {
         connectWifi();
@@ -163,13 +142,13 @@ void loop()
     updown = analogRead(PIN_ADC3);
     updownIntervalNow = getInterval(updown);
 
-    //    Serial.println(updownIntervalNow);
-
+//    Serial.println(updownIntervalNow);
+    
     analogSetWidth(12);
     analogSetPinAttenuation(PIN_ADC2, ADC_6db);
     leftright = analogRead(PIN_ADC2);
     leftrightIntervalNow = getInterval(leftright);
-
+    
 
 
     if (updownIntervalNow != updownIntervalPrevious || leftrightIntervalNow != leftrightIntervalPrevious) {
@@ -184,7 +163,7 @@ void loop()
 
         updownIntervalPrevious = updownIntervalNow;
         leftrightIntervalPrevious = leftrightIntervalNow;
-        //        Serial.println(updownIntervalPrevious);
+//        Serial.println(updownIntervalPrevious);
     }
 
     delay(10);
@@ -198,22 +177,5 @@ int getInterval(long data) {
     } else if (data > 3000) {
         return 2;
     }
-}
-
-void displayLCD (int state) {
-//  lcd.begin(12, 14);
-//  Serial.println("Print LCD ");
-  lcd.clear();
-  if (state == LOW) {
-    lcd.setCursor(0, 0);
-    lcd.print("DETECT MINE");
-    lcd.setCursor(0, 1);
-    lcd.print("ON");
-  } else if (state == HIGH) {
-    lcd.setCursor(0, 0);
-    lcd.print("DETECT MINE");
-    lcd.setCursor(0, 1);
-    lcd.print("OFF");
-  }
 }
 
