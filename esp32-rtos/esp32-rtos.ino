@@ -19,6 +19,9 @@ volatile double ampAdc1 = 0;
 volatile double ampAdc2 = 0;
 volatile double ampAdc3 = 0;
 
+unsigned long startTime = 0;
+unsigned long endTime = 5 * 1000;   // thời gian (ms) mỗi lần gửi dữ liệu
+
 uint64_t chipid;  
 byte mac[6];
 char MAC_ADDRESS[50];
@@ -31,8 +34,11 @@ bool isValidContentType = false;
 // update firmware config
 String host = "113.161.21.15"; // Host => bucket-name.s3.region.amazonaws.com
 int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
-String bin = "/current-v1.1.ino.esp32.bin"; // bin file name with a slash in front.
-String FIRMWARE_VERSION = "1.0";    //
+// String bin = "/current-v1.1.ino.esp32.bin"; // bin file name with a slash in front.
+String bin_v10 = "/current-v1.0.ino.esp32.bin";
+String bin_v11 = "/current-v1.1.ino.esp32.bin";
+String bin_v12 = "/current-v1.2.ino.esp32.bin";
+String FIRMWARE_VERSION = "1.0";    // 
 
 // Utility to extract header value from headers
 String getHeaderValue(String header, String headerName) {
@@ -40,16 +46,16 @@ String getHeaderValue(String header, String headerName) {
 }
 
 // OTA Logic
-void execOTA() {
+void execOTA(String binFile) {
     Serial.println("Connecting to: " + String(host));
     // Connect to S3
     if (client.connect(host.c_str(), port)) {
         // Connection Succeed.
         // Fecthing the bin
-        Serial.println("Fetching Bin: " + String(bin));
+        Serial.println("Fetching Bin: " + String(binFile));
 
         // Get the contents of the bin file
-        client.print(String("GET ") + bin + " HTTP/1.1\r\n" +
+        client.print(String("GET ") + binFile + " HTTP/1.1\r\n" +
                      "Host: " + host + "\r\n" +
                      "Cache-Control: no-cache\r\n" +
                      "Connection: close\r\n\r\n");
@@ -238,6 +244,7 @@ void setup() {
         1,                /* Priority of the task. */
         NULL);            /* Task handle. */
 
+
 }
 
 void connectWifi() {
@@ -271,9 +278,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
     JsonObject& root = jsonBuffer.parseObject(jsonStr);
 
     String command = root["cmd"];
-    if (command == "update") {
+    if (command == "update_v10") {
         Serial.println("updating...");
-        execOTA();
+        execOTA(bin_v10);
+    } else if (command == "update_v11") {
+        Serial.println("updating...");
+        execOTA(bin_v11);
+    } else if (command == "update_v12") {
+        Serial.println("updating...");
+        execOTA(bin_v12);
     }
 }
 
@@ -285,7 +298,7 @@ void reconnect() {
         if (mqttClient.connect(MQTT_CLIENTID, MQTT_USER, MQTT_PASS, TOPIC_LWT, 0, false, MESSAGE_LWT)) {
             Serial.println("connected");
 
-            const size_t bufferSize = JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(3)+JSON_OBJECT_SIZE(7); //+JSON_OBJECT_SIZE(3);
+            const size_t bufferSize = JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(7); //+JSON_OBJECT_SIZE(3);
             DynamicJsonBuffer jsonBuffer(bufferSize);
 
 //            StaticJsonBuffer<400> jsonBuffer;
@@ -300,7 +313,9 @@ void reconnect() {
             JsonObject& updateInfo = root.createNestedObject("updateInfo");
             updateInfo["server"] = host;
             updateInfo["port"] = port;
-            updateInfo["fileName"] = bin;
+            updateInfo["file1"] = bin_v10;
+            updateInfo["file2"] = bin_v11;
+            updateInfo["file3"] = bin_v12;
 
             JsonObject& deviceConfig = root.createNestedObject("deviceConfig");
             deviceConfig["calibrationRatio"] = CALIB_RATIO;
@@ -340,9 +355,8 @@ void loop() {
 
     mqttClient.loop();
 
-    unsigned long startTime = millis();
 
-    while ((unsigned long)(millis() - startTime) < 5000) //sample for 1 Sec
+    if ((unsigned long)(millis() - startTime) > endTime) // send data in "endTime"
     {
         double data1, data2, data3;
 
@@ -368,6 +382,8 @@ void loop() {
         char JSONmessageBuffer[100];
         root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
         mqttClient.publish(TOPIC_PUBLISH, JSONmessageBuffer);
+        
+        startTime = millis();
     }
     
 }

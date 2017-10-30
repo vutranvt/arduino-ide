@@ -1,13 +1,13 @@
 #ifndef __USER_CONFIG_H__
 #define __USER_CONFIG_H__
 
-#define RAW_ADC    // send raw_adc  to broker
+//#define RAW_ADC    // send raw_adc  to broker
 
 
 /* config device's LOCATION*/
-#define TEST
+//#define TEST
 // #define NTH
-// #define BUONMATHUOT
+ #define BUONMATHUOT
 // #define DANANG
 // #define HUE
 // #define QUYNHON
@@ -48,11 +48,6 @@
 #endif
 
 
-/* config update firmware */
-#define UPDATE_HOST   "113.161.21.15"
-#define UPDATE_PORT 8267
-#define BIN_FILE "/esp32_update.ino.esp32.bin"
-
 
 /* config adc */
 // (ADC1_CHANNEL_0)   // GPIO 36 - VP
@@ -72,9 +67,9 @@
 
 // config ADC
 #define CALIB_RATIO 27
-#define ADC_ZERO_1 2048
-#define ADC_ZERO_2 2048
-#define ADC_ZERO_3 2048
+#define ADC_ZERO_1 2450
+#define ADC_ZERO_2 2424
+#define ADC_ZERO_3 2445
 #define TI_RATIO 80
 
 
