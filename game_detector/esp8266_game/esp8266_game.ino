@@ -71,11 +71,9 @@ const char* SSID = "Phong Ky Thuat";
 const char* PASSWORD = "123456789";
 const char* MQTT_SERVER = "113.161.21.15";
 
-const char* PUBLISH_TOPIC = "miner";
-const char* SUBSCRIBE_TOPIC = "controller";
-
-const char* get_chipID = "get_chipID";
-uint32_t chipID;
+const char* PUBLISH_TOPIC = "maybanca";
+const char* SUBSCRIBE_TOPIC = "maybanca";
+const char* LWT_TOPIC = "maybanca/lwt";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -102,7 +100,7 @@ void setup() {
     
 
     Serial.begin(115200);
-    mySerial.begin(57600); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
+    mySerial.begin(38400); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
     
     delay(10);
 
@@ -125,15 +123,10 @@ void setup() {
     Serial.println(WiFi.localIP());
 
     client.setServer(MQTT_SERVER, 1884);
-    client.setCallback(callback);
-
-    // chipID = ESP.getChipId();
-    // sCmd.addDefaultHandler(defaultCommand);
+    // client.setCallback(callback);
 
     // Một số hàm trong thư viện Serial Command
-    // sCmd.addCommand(server_arduino, requestResponse);   //Khi có lệnh thì thực hiện hàm "rxRequestServer"
-    // sCmd.addCommand(esp_arduino, rxRequest);        //Khi có lệnh thì thực hiện hàm "rxResponseEsp"
-    // sCmd.addDefaultHandler(defaultCommand);
+    sCmd.addDefaultHandler(defaultCommand);
 
 }
 
@@ -166,26 +159,20 @@ void callback(char* topic, byte* payload, unsigned int length) {
         jsonStr += (char)payload[i];
     }
     
-     StaticJsonBuffer<200> jsonBuffer;
-     JsonObject& root = jsonBuffer.parseObject(jsonStr);
+    StaticJsonBuffer<200> jsonBuffer;
+    JsonObject& root = jsonBuffer.parseObject(jsonStr);
 
-     unsigned int updownValue = root["updown"];
-     unsigned int leftrightValue = root["leftright"];
-     Serial.print("updown value: ");
-     Serial.print(updownValue);
-     Serial.print("----leftright value: ");
-     Serial.println(leftrightValue);
-      
-      mySerial.print('esp8266');
-      mySerial.print('\r');
-      
-//      root.printTo(mySerial);
-       mySerial.print(jsonStr);
-//      mySerial.print(payload);
-       mySerial.print('\r');
 
-//       root.printTo(Serial);
-      Serial.println(jsonStr);
+    mySerial.print('esp8266');
+    mySerial.print('\r');
+
+    //      root.printTo(mySerial);
+    mySerial.print(jsonStr);
+    //      mySerial.print(payload);
+    mySerial.print('\r');
+
+    //       root.printTo(Serial);
+    Serial.println(jsonStr);
 
 }
 
@@ -196,7 +183,7 @@ void reconnect() {
     while (!client.connected()) {
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
-        if (client.connect("ESP8266Game", "esp32", "mtt@23377")) {
+        if (client.connect("ESP8266Game", "esp32", "mtt@23377", LWT_TOPIC, 0, false, "offline")) {
             Serial.println("connected");
             // Once connected, publish an announcement...
             client.publish(PUBLISH_TOPIC, "hello world");
@@ -211,6 +198,7 @@ void reconnect() {
         }
     }
 }
+
 void loop() {
     // Kiểm tra kết nối Wifi
     while (WiFi.status() != WL_CONNECTED) {
@@ -222,25 +210,7 @@ void loop() {
     }
     client.loop();  //
 
-    // sCmd.readSerial();  //
-
-    int status = digitalRead(IN_PIN);
-
-    if(status==LOW) {
-        pinMode(OUT_PIN, OUTPUT);
-        digitalWrite(OUT_PIN, LOW); 
-        state = LOW;
-        delay(40);
-    } 
-    else {
-//        if(state == LOW) {
-            pinMode(OUT_PIN, INPUT);
-//        }
-        state = HIGH;
-        int val = digitalRead(OUT_PIN);
-        Serial.println(val);
-        delay(10);
-    }
+    sCmd.readSerial();  //
 }
 
 void defaultCommand(String command) {
