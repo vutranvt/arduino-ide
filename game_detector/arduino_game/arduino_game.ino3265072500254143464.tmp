@@ -31,41 +31,22 @@ const byte RX = 12;          // Chân 3 được dùng làm chân RX
 const byte TX = 13;          // Chân 2 được dùng làm chân TX
 
 
-int inState = LOW;   // 
-int previousInState = LOW;    
-
-int outState = LOW;
-int previousOutState = LOW;
+int state = LOW;   // state mức cao: chưa phát hiện
+int previousState = LOW;    
 
 int preIn1 = HIGH;
 int preIn2 = HIGH;
 int preIn3 = HIGH;
 int preIn4 = HIGH;
-int preIn5 = HIGH;
-int preIn6 = HIGH;
-int preIn7 = HIGH;
-int preIn8 = HIGH;
-
-int preOut1 = HIGH;
-int preOut2 = HIGH;
-int preOut3 = HIGH;
-int preOut4 = HIGH;
-int preOut5 = HIGH;
-int preOut6 = HIGH;
-int preOut7 = HIGH;
-int preOut8 = HIGH;
+int preSta5 = HIGH;
 
 unsigned long startTime = 0;
-unsigned long endTime = 5 * 100;   // thời gian (ms) mỗi lần gửi dữ liệu 'pin out'
+unsigned long endTime = 5 * 100;   // thời gian (ms) mỗi lần gửi dữ liệu
 unsigned long rxPulse = 10;
 unsigned long txPulse = 20;
 unsigned long counter = 0;
 
-String data1 = "";
-String data2 = "";
-String data3 = "";
-String data4 = "";
-String data5 = "";
+int detectValue = 512;
 
 SoftwareSerial mySerial = SoftwareSerial(RX, TX);
 
@@ -105,79 +86,77 @@ void setup() {
     
 void loop() {
     sCmd.readSerial();
-    int in5 = digitalRead(IN_PIN_5);
-    Serial.println(in5);
+    
     int in1 = digitalRead(IN_PIN_1);
     int in2 = digitalRead(IN_PIN_2);
     int in3 = digitalRead(IN_PIN_3);
     int in4 = digitalRead(IN_PIN_4);
 
     int tempState = (in1<<3) | (in2<<2) | (in3<<1) | in4;
-    // Serial.print("inState: ");
+    // Serial.print("state: ");
     // Serial.println(state);
 
     // Kiểm tra Pin có thật sự xuống GND hay không
     // Nếu Pin được kích: true, không được kích: false
     if (checkPin(tempState)==true) {    
-        inState = tempState;
-        
+        state = tempState;
+        previousState = state;  // Lưu trạng thái của các Pin In
         // Có PIN -> LOW
-        if (inState!=0xF) {   
+        if (state!=0xF) {   
             // Kiểm tra trạng thái Pin: 
             // Có Pin thay đổi: 0->1 hoặc 1->0
-            if (inState!=previousInState) {
+            if (state!=previousState) {
                 StaticJsonBuffer<200> jsonBuffer;
                 JsonObject& root = jsonBuffer.createObject();
 
-                if (in1==LOW && preIn1==HIGH) {         //Trạng thái pin: 1->0 (preIn -> in) 
+                if (in1==LOW && in1!=preIn1) {          //Trạng thái pin: 1->0
                     pinMode(OUT_PIN_1, OUTPUT);
                     digitalWrite(OUT_PIN_1, LOW);    
                     preIn1 = LOW;
-                    root["bc01"] = "coin on";
+                    root["bc01"] = "on";
                 } 
-                else if (in1==HIGH && preIn1==LOW) {    //Trạng thái pin: 0->1
+                else if (in1==HIGH && in1!=preIn1) {    //Trạng thái pin: 0->1
                     preIn1 = HIGH;
                 }
                 if (in2==LOW && preIn2==HIGH) {         //Trạng thái pin: 1->0
                     pinMode(OUT_PIN_2, OUTPUT);
                     digitalWrite(OUT_PIN_2, LOW);
                     preIn2 = LOW;
-                    root["bc02"] = "coin on";
+                    root["bc02"] = "on";
                 } 
-                else if (in2==HIGH && preIn2==LOW) {    //Trạng thái pin: 0->1
+                else if (in2==HIGH && in2!=preIn2) {    //Trạng thái pin: 0->1
                     preIn2 = HIGH;
                 }            
                 if (in3==LOW && preIn3==HIGH) {         //Trạng thái pin: 1->0
                     pinMode(OUT_PIN_3, OUTPUT);
                     digitalWrite(OUT_PIN_3, LOW);
                     preIn3 = LOW;
-                    root["bc03"] = "coin on";
+                    root["bc03"] = "on";
                 } 
-                else if (in3==HIGH && preIn3==LOW) {    //Trạng thái pin: 0->1
+                else if (in3==HIGH && in3!=preIn3) {    //Trạng thái pin: 0->1
                     preIn3 = HIGH;
                 }
                 if (in4==LOW && preIn4==HIGH) {         //Trạng thái pin: 1->0
                     pinMode(OUT_PIN_4, OUTPUT);
                     digitalWrite(OUT_PIN_4, LOW);
                     preIn4 = LOW;
-                    root["bc04"] = "coin on";
+                    root["bc04"] = "on";
                 } 
-                else if (in4==HIGH && preIn4==LOW) {    //Trạng thái pin: 0->1
+                else if (in4==HIGH && in4!=preIn4) {    //Trạng thái pin: 0->1
                     preIn4 = HIGH;
                 }
 
-                // Có tồn tại data thì mới gửi dữ liệu
-//                if (root) {
+                // if (root["bc01"] || root["bc02"] || root["bc03"] || root["bc04"]) {
                     mySerial.print('arduino');
                     mySerial.print('\r');               
                     root.printTo(mySerial);
                     mySerial.print('\r'); 
-//                } 
+                // }
                 delay(20);
             }
             // Không có Pin thay đổi
             else {
-                txOutPin();
+//               txOutPin();
             }
         }
         // Không có Pin -> LOW: kiểm tra trạng thái của các Pin Out
@@ -190,7 +169,6 @@ void loop() {
             preIn3 = HIGH;
             preIn4 = HIGH;
         }
-        previousInState = inState;  // Lưu trạng thái của các Pin In
     }
 }
 
@@ -244,27 +222,26 @@ void txOutPin () {
     int out3 = digitalRead(OUT_PIN_3);
     int out4 = digitalRead(OUT_PIN_4);
 
-    outState = (out1<<3) | (out2<<2) | (out3<<1) | out4;
+    int outState = (out1<<3) | (out2<<2) | (out3<<1) | out4;
     // Serial.print("outState: ");
     // Serial.println(outState);
 
     // Nếu Pin Out -> LOW: Gửi data Pin Out theo chu kỳ "endTime" (ms)
     if (outState!=0xF && ((unsigned long)(millis()-startTime)>=endTime)) {
-
         StaticJsonBuffer<200> jsonBuffer2;
         JsonObject& root2 = jsonBuffer2.createObject();
-
-        if (out1==LOW) {           //pin out: 1->0
-            root2["bc01"] = "board off";
+        
+        if (out1==LOW) {
+            root2["bc01"] = "off";
         }
-        if (out2==LOW) {           //pin out: 1->0
-            root2["bc02"] = "board off";
+        if (out2==LOW) {
+            root2["bc02"] = "off";
         }
-        if (out3==LOW) {           //pin out: 1->0
-            root2["bc03"] = "board off";
+        if (out3==LOW) {
+            root2["bc03"] = "off";
         }
-        if (out4==LOW) {           //pin out: 1->0
-            root2["bc04"] = "board off";
+        if (out4==LOW) {
+            root2["bc04"] = "off";
         }
 
         mySerial.print('arduino');
@@ -272,7 +249,6 @@ void txOutPin () {
         root2.printTo(mySerial);
         mySerial.print('\r'); 
 
-        startTime = millis();        
+        startTime = millis();
     }
-
 }

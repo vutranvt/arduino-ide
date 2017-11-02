@@ -19,8 +19,12 @@ volatile double ampAdc1 = 0;
 volatile double ampAdc2 = 0;
 volatile double ampAdc3 = 0;
 
-unsigned long startTime = 0;
-unsigned long endTime = 5 * 1000;   // thời gian (ms) mỗi lần gửi dữ liệu
+unsigned long wifiTime = 60 * 1000; // 
+unsigned long mqttTime = 30 * 1000; // 
+unsigned long errorTime = 30 * 1000; // 
+unsigned long startErrorTime = 0;
+unsigned long sendTime = 5 * 1000;   // thời gian (ms) mỗi lần gửi dữ liệu
+unsigned long startSendTime = 0;
 
 uint64_t chipid;  
 byte mac[6];
@@ -38,7 +42,7 @@ int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
 String bin_v10 = "/current-v1.0.ino.esp32.bin";
 String bin_v11 = "/current-v1.1.ino.esp32.bin";
 String bin_v12 = "/current-v1.2.ino.esp32.bin";
-String FIRMWARE_VERSION = "1.0";    // 
+String FIRMWARE_VERSION = "1.0";    //// config 
 
 // Utility to extract header value from headers
 String getHeaderValue(String header, String headerName) {
@@ -208,9 +212,14 @@ void setup() {
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
+    unsigned long startWifiTime = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        // Nếu không có wifi: Restart sau 'wifiTime'
+        if ((unsigned long)(millis() - startWifiTime) >= wifiTime) {
+            ESP.restart();
+        }
     }
 
     Serial.println("");
@@ -226,6 +235,7 @@ void setup() {
     // config Mqtt
     mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
     mqttClient.setCallback(callback);
+    startErrorTime = millis();
 
     // config task list
     xTaskCreate(
@@ -254,15 +264,20 @@ void connectWifi() {
     Serial.println(WIFI_SSID);
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    delay(500);
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Not connect");
-    } else {
-        Serial.println("");
-        Serial.println("WiFi connected");
-        Serial.println("IP address: ");
-        Serial.println(WiFi.localIP());
+
+    unsigned long startWifiTime = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+        // Nếu trong 20s không có kết nối thì restart 
+        if ((unsigned long)(millis() - startWifiTime)>=wifiTime) {
+            ESP.restart();
+        }
     }
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
 
 }
 
@@ -291,8 +306,13 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void reconnect() {
+    unsigned long startMqttTime = millis();
     // Loop until we're reconnected
     while (!mqttClient.connected()) {
+        // Kiểm tra kết nối Wifi
+        while (WiFi.status() != WL_CONNECTED) {
+            connectWifi();
+        }
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
         if (mqttClient.connect(MQTT_CLIENTID, MQTT_USER, MQTT_PASS, TOPIC_LWT, 0, false, MESSAGE_LWT)) {
@@ -338,16 +358,17 @@ void reconnect() {
             Serial.print(mqttClient.state());
             Serial.println(" try again in 5 seconds");
             // Wait 5 seconds before retrying
-            delay(5000);
+            delay(2000);
+        }
+        // Nếu sau 'mqttTime' không kết nối được thì restart 
+        if ((unsigned long)(millis() - startMqttTime)>=mqttTime) {
+            ESP.restart();
         }
     }
 }
 
 void loop() {
-    // Kiểm tra kết nối Wifi
-    while (WiFi.status() != WL_CONNECTED) {
-        connectWifi();
-    }
+    
     // Kiểm tra kết nối với Mqtt Server
     if (!client.connected()) {
         reconnect();
@@ -355,8 +376,7 @@ void loop() {
 
     mqttClient.loop();
 
-
-    if ((unsigned long)(millis() - startTime) > endTime) // send data in "endTime"
+    if ((unsigned long)(millis() - startSendTime) >= sendTime) // send data in "endTime"
     {
         double data1, data2, data3;
 
@@ -381,9 +401,14 @@ void loop() {
 
         char JSONmessageBuffer[100];
         root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-        mqttClient.publish(TOPIC_PUBLISH, JSONmessageBuffer);
-        
-        startTime = millis();
+
+        if (mqttClient.publish(TOPIC_PUBLISH, JSONmessageBuffer)) {
+            startErrorTime = millis();
+        } else if ((unsigned long)(millis() - startErrorTime) >= errorTime) {
+            ESP.restart();
+        }
+
+        sendTime = millis();
     }
     
 }

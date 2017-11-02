@@ -28,6 +28,7 @@
 #include <SerialCommand.h>
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
+#include "user_config.h"
 
 extern "C" {
 #include "user_interface.h"
@@ -43,22 +44,13 @@ extern "C" {
 #define OUT_PIN 14   // D1
 #define IN_PIN 12   // D2
 
-
-
-// config device command
-const char* server_arduino = "server_arduino";
-const char* esp_arduino = "esp_arduino";
-
 int state = HIGH;   // state mức cao: chưa phát hiện
 int previousState = 0;    
 
-unsigned long startTime = 0;
-unsigned long endTime = 2 * 1000;
-
-int detectValue = 512;
-
-String chipIdEsp = "";
-String mac_address = "";
+unsigned long mqttTime = 30 * 1000;
+unsigned long wifiTime = 60 * 1000;
+unsigned long startSendTime = 0;
+unsigned long sendTime = 30 * 1000;
 
 const byte RX = 4;
 const byte TX = 5;
@@ -71,27 +63,14 @@ const char* SSID = "Phong Ky Thuat";
 const char* PASSWORD = "123456789";
 const char* MQTT_SERVER = "113.161.21.15";
 
-const char* PUBLISH_TOPIC = "maybanca";
-const char* SUBSCRIBE_TOPIC = "maybanca";
-const char* LWT_TOPIC = "maybanca/lwt";
+const char* PUBLISH_TOPIC = "bmt/maybanca";
+const char* SUBSCRIBE_TOPIC = "bmt/maybanca";
+const char* LWT_TOPIC = "bmt/maybanca/lwt";
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+WiFiClient client;
+PubSubClient mqttClient(client);
 
 void setup() {
-
-    // pinMode(UP_PIN, OUTPUT);
-    // pinMode(DOWN_PIN, OUTPUT);
-    // pinMode(RIGHT_PIN, OUTPUT);
-    // pinMode(LEFT_PIN, OUTPUT);
-    // pinMode(DETECT_PIN, INPUT_PULLUP);
-    // pinMode(DETECT_PIN2, OUTPUT);
-
-    // digitalWrite(UP_PIN, HIGH);
-    // digitalWrite(DOWN_PIN, HIGH);
-    // digitalWrite(LEFT_PIN, HIGH);
-    // digitalWrite(RIGHT_PIN, HIGH);
-    // digitalWrite(DETECT_PIN2, HIGH);
 
     pinMode(OUT_PIN, OUTPUT);
     digitalWrite(OUT_PIN, HIGH);
@@ -111,10 +90,14 @@ void setup() {
     Serial.println(SSID);
 
     WiFi.begin(SSID, PASSWORD);
-
+    
+    unsigned long startWifiTime = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        if ((unsigned long)(millis() - startWifiTime) >= wifiTime) {
+            ESP.restart();
+        }
     }
 
     Serial.println("");
@@ -122,8 +105,9 @@ void setup() {
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
-    client.setServer(MQTT_SERVER, 1884);
-    // client.setCallback(callback);
+    mqttClient.setServer(MQTT_SERVER, 1884);
+    // mqttClient.setCallback(callback);
+    startSendTime = millis();
 
     // Một số hàm trong thư viện Serial Command
     sCmd.addDefaultHandler(defaultCommand);
@@ -137,15 +121,20 @@ void connectWifi() {
     Serial.println(SSID);
 
     WiFi.begin(SSID, PASSWORD);
-    delay(500);
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Not connect");
-    } else {
-        Serial.println("");
-        Serial.println("WiFi connected");
-        Serial.println("IP address: ");
-        Serial.println(WiFi.localIP());
+    
+    unsigned long startWifiTime = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+        // Nếu trong 20s không có kết nối thì restart 
+        if ((unsigned long)(millis() - startWifiTime)>=wifiTime) {
+            ESP.restart();
+        }
     }
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
 
 }
 
@@ -179,36 +168,41 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 
 void reconnect() {
+    unsigned long startMqttTime = millis();
     // Loop until we're reconnected
-    while (!client.connected()) {
+    while (!mqttClient.connected()) {
+        // Kiểm tra kết nối Wifi
+        while (WiFi.status() != WL_CONNECTED) {
+            connectWifi();
+        }
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
-        if (client.connect("ESP8266Game", "esp32", "mtt@23377", LWT_TOPIC, 0, false, "offline")) {
+        if (mqttClient.connect("ESP8266Game", "esp32", "mtt@23377", LWT_TOPIC, 0, false, "offline")) {
             Serial.println("connected");
             // Once connected, publish an announcement...
-            client.publish(PUBLISH_TOPIC, "hello world");
+            mqttClient.publish(PUBLISH_TOPIC, "hello world");
             // ... and resubscribe
-            client.subscribe(SUBSCRIBE_TOPIC);
+            mqttClient.subscribe(SUBSCRIBE_TOPIC);
         } else {
             Serial.print("failed, rc=");
-            Serial.print(client.state());
+            Serial.print(mqttClient.state());
             Serial.println(" try again in 5 seconds");
             // Wait 5 seconds before retrying
-            delay(5000);
+            delay(2000);
+        }
+        // Nếu sau 'mqttTime' không kết nối được thì restart 
+        if ((unsigned long)(millis() - startMqttTime)>=mqttTime) {
+            ESP.restart();
         }
     }
 }
 
 void loop() {
-    // Kiểm tra kết nối Wifi
-    while (WiFi.status() != WL_CONNECTED) {
-        connectWifi();
-    }
     // Kiểm tra kết nối Mqtt Server
-    if (!client.connected()) {
+    if (!mqttClient.connected()) {
         reconnect();
     }
-    client.loop();  //
+    mqttClient.loop();  //
 
     sCmd.readSerial();  //
 }
@@ -218,7 +212,11 @@ void defaultCommand(String command) {
 
     Serial.println(json);
     
-    client.publish(PUBLISH_TOPIC, json);
+    if (mqttClient.publish(PUBLISH_TOPIC, json)) {
+        startSendTime = millis();
+    } else if ((unsigned long)(millis() - startSendTime) >= sendTime) {
+        ESP.restart();
+    }
 }
 
 
