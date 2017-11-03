@@ -6,14 +6,14 @@
 #include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
-#include "bmt_config.h"
+#include "user_config.h"
 
 extern "C" {
 #include "user_interface.h"
 }
 
-#define TEST_IN_PIN 14  // D5
-#define TEST_OUT_PIN 12 // D6
+#define TEST_OUT_PIN 12   // D6
+#define TEST_IN_PIN 14   // D5
 
 byte mac[6];
 char MAC_ADDRESS[50];
@@ -26,6 +26,8 @@ const byte TX = 5;
 SoftwareSerial mySerial(RX, TX, false, 256);
 SerialCommand sCmd(mySerial); // Khai báo biến sử dụng thư viện Serial Command
 
+/* wifi */
+//const char* SSID = "113.161.21.15";
 // Update these with values suitable for your network.
 const char* MQTT_SERVER = "113.161.21.15";
 const int MQTT_PORT = 1884;
@@ -35,24 +37,32 @@ const char* MQTT_PASS = "mtt@23377";
 WiFiClient client;
 PubSubClient mqttClient(client);
 
-// update firmware config
-String host = "113.161.21.15"; // Host => bucket-name.s3.region.amazonaws.com
-int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
-String bin_v10 = "/esp8266_game-v1.0.ino.nodemcu.bin";
-String bin_v11 = "/esp8266_game-v1.1.ino.nodemcu.bin";
-String bin_v12 = "/esp8266_game-v1.2.ino.nodemcu.bin";
-String FIRMWARE_VERSION = "1.0";    //// config 
+// Variables to validate
+// response from S3
+int contentLength = 0;
+bool isValidContentType = false;
 
-void updateFirmware(String binVersion) {
+// update firmware config
+String host = "http://113.161.21.15:8267"; // Host => bucket-name.s3.region.amazonaws.com
+int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
+// String bin = "/current-v1.1.ino.esp32.bin"; // bin file name with a slash in front.
+String bin_v10 = "/game-v1.0.ino.esp32.bin";
+String bin_v11 = "/game-v1.1.ino.esp32.bin";
+String bin_v12 = "/game-v1.2.ino.esp32.bin";
+String FIRMWARE_VERSION = "1.0";    //// config 
+String url = "http://113.161.21.15:8267/esp8266_game-v1.1.ino.nodemcu.bin";
+
+String bin = "/esp8266_game-v1.1.ino.nodemcu.bin";
+
+void updateFirmware() {
 
     // Kiểm tra kết nối Wifi
     while (WiFi.status() != WL_CONNECTED) {
         connectWifi();
     }
-    Serial.println();
     Serial.print("Updating Firmware...");
 
-    t_httpUpdate_return ret = ESPhttpUpdate.update(String("http://" + host + ":" + (String)port + binVersion));
+    t_httpUpdate_return ret = ESPhttpUpdate.update("http://" + host + (String)port + bin);
     switch (ret) {
         case HTTP_UPDATE_FAILED:
             Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
@@ -76,7 +86,7 @@ void setup() {
     pinMode(TEST_IN_PIN, INPUT_PULLUP);
     
     Serial.begin(115200);
-    mySerial.begin(57600); //Để baudrate trùng với software serial trên mạch arduino
+    mySerial.begin(38400); //Để baudrate trùng với software serial trên mạch arduino
     
     delay(10);
 
@@ -166,11 +176,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     mySerial.print('\r');
 
     if (rxData=="update-v1.0") {
-        updateFirmware(bin_v10);
-    } else if (rxData=="update-v1.1") {
-        updateFirmware(bin_v11);
-    } else if (rxData=="update-v1.2") {
-        updateFirmware(bin_v12);
+        updateFirmware();
     }
     Serial.print("subscribe: ");
     Serial.println(jsonStr);
@@ -205,9 +211,9 @@ void reconnect() {
             JsonObject& updateInfo = root.createNestedObject("updateInfo");
             updateInfo["server"] = host;
             updateInfo["port"] = port;
-            updateInfo["v10"] = bin_v10;
-            updateInfo["v11"] = bin_v11;
-            updateInfo["v12"] = bin_v12;
+            updateInfo["file1"] = bin_v10;
+            updateInfo["file2"] = bin_v11;
+            updateInfo["file3"] = bin_v12;
 
             // JsonObject& deviceConfig = root.createNestedObject("deviceConfig");
 
@@ -235,6 +241,9 @@ void reconnect() {
 }
 
 void loop() {
+    if (digitalRead(TEST_IN_PIN)==LOW) {
+        updateFirmware();
+    }
     // Kiểm tra kết nối Mqtt Server
     if (!mqttClient.connected()) {
         reconnect();
@@ -247,7 +256,7 @@ void loop() {
 void defaultCommand(String command) {
     char *json = sCmd.next();
 
-//    Serial.println(json);
+    Serial.println(json);
     
     if (mqttClient.publish(TOPIC_PUBLISH, json)) {
         currentPublishMillis = millis();

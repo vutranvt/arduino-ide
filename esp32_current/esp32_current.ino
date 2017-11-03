@@ -6,11 +6,19 @@
 #include <Update.h>
 #include "user_config.h"
 
+#define TEST_IN_PIN 14  // D5
+#define TEST_OUT_PIN 12 // D6
+
 WiFiClient client;
 PubSubClient mqttClient(client);
 
-#define TEST_PIN 14 // D5
+/* mqtt*/
+#define MQTT_SERVER "113.161.21.15"
+#define MQTT_PORT 1884
+#define MQTT_USER "esp32"
+#define MQTT_PASS "mtt@23377"
 
+/* adc */
 volatile unsigned int counter = 0;
 volatile unsigned int counter1 = 0;
 volatile unsigned int counter2 = 0;
@@ -19,30 +27,23 @@ volatile double ampAdc1 = 0;
 volatile double ampAdc2 = 0;
 volatile double ampAdc3 = 0;
 
-unsigned long wifiTime = 60 * 1000; // 
-unsigned long mqttTime = 30 * 1000; // 
-unsigned long errorTime = 30 * 1000; // 
-unsigned long startErrorTime = 0;
-unsigned long sendTime = 5 * 1000;   // thời gian (ms) mỗi lần gửi dữ liệu
-unsigned long startSendTime = 0;
+unsigned long currentErrorMillis = 0;
+unsigned long currentSendMillis = 0;
 
-uint64_t chipid;  
 byte mac[6];
 char MAC_ADDRESS[50];
+char MQTT_CLIENT[64];  
 
-// Variables to validate
-// response from S3
-int contentLength = 0;
-bool isValidContentType = false;
-
-// update firmware config
+/* update firmware */
 String host = "113.161.21.15"; // Host => bucket-name.s3.region.amazonaws.com
 int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
-// String bin = "/current-v1.1.ino.esp32.bin"; // bin file name with a slash in front.
-String bin_v10 = "/current-v1.0.ino.esp32.bin";
-String bin_v11 = "/current-v1.1.ino.esp32.bin";
-String bin_v12 = "/current-v1.2.ino.esp32.bin";
+String bin_v10 = "/esp32_current-v1.0.ino.esp32.bin";
+String bin_v11 = "/esp32_current-v1.1.ino.esp32.bin";
+String bin_v12 = "/esp32_current-v1.2.ino.esp32.bin";
 String FIRMWARE_VERSION = "1.0";    //// config 
+
+int contentLength = 0;
+bool isValidContentType = false;
 
 // Utility to extract header value from headers
 String getHeaderValue(String header, String headerName) {
@@ -196,33 +197,35 @@ void execOTA(String binFile) {
 
 void setup() {
 
-    Serial.begin(112500);
-    delay(1000);
+    pinMode(TEST_IN_PIN, INPUT_PULLUP);
+    pinMode(TEST_OUT_PIN, OUTPUT);
+    digitalWrite(TEST_OUT_PIN, HIGH);
 
-    pinMode(TEST_PIN, INPUT_PULLUP);
+    Serial.begin(115200);
+    delay(100);
 
+    Serial.println();
     Serial.print("Firmware Version: ");
     Serial.println(FIRMWARE_VERSION);
 
-    // We start by connecting to a WiFi network
-    // connectWifi();
+    // connect Wifi
     Serial.println();
     Serial.print("Connecting to ");
     Serial.println(WIFI_SSID);
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    unsigned long startWifiTime = millis();
+    unsigned long currentWifiMillis = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
-        // Nếu không có wifi: Restart sau 'wifiTime'
-        if ((unsigned long)(millis() - startWifiTime) >= wifiTime) {
+        // Nếu không có wifi: Restart sau '60000' ms
+        if ((unsigned long)(millis() - currentWifiMillis) >= 60000) {
             ESP.restart();
         }
     }
 
-    Serial.println("");
+    Serial.println();
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
@@ -230,12 +233,13 @@ void setup() {
     // get chip id (về bản chất là mac address)
     WiFi.macAddress(mac);
     sprintf(MAC_ADDRESS, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    sprintf(MQTT_CLIENT, "ESP32-%02X%02X%02X", mac[3], mac[4], mac[5]);
     Serial.println(MAC_ADDRESS);    
     
     // config Mqtt
     mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
     mqttClient.setCallback(callback);
-    startErrorTime = millis();
+    currentErrorMillis = millis();
 
     // config task list
     xTaskCreate(
@@ -265,12 +269,12 @@ void connectWifi() {
 
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    unsigned long startWifiTime = millis();
+    unsigned long currentWifiMillis = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
-        // Nếu trong 20s không có kết nối thì restart 
-        if ((unsigned long)(millis() - startWifiTime)>=wifiTime) {
+        // Nếu trong '60000'ms không có kết nối thì restart 
+        if ((unsigned long)(millis() - currentWifiMillis)>=60000) {
             ESP.restart();
         }
     }
@@ -293,52 +297,54 @@ void callback(char* topic, byte* payload, unsigned int length) {
     JsonObject& root = jsonBuffer.parseObject(jsonStr);
 
     String command = root["cmd"];
-    if (command == "update_v10") {
+    if (command == "update_v1.0") {
         Serial.println("updating...");
         execOTA(bin_v10);
-    } else if (command == "update_v11") {
+    } else if (command == "update_v1.1") {
         Serial.println("updating...");
         execOTA(bin_v11);
-    } else if (command == "update_v12") {
+    } else if (command == "update_v1.2") {
         Serial.println("updating...");
         execOTA(bin_v12);
     }
 }
 
 void reconnect() {
-    unsigned long startMqttTime = millis();
+    unsigned long currentMqttMillis = millis();
     // Loop until we're reconnected
     while (!mqttClient.connected()) {
         // Kiểm tra kết nối Wifi
         while (WiFi.status() != WL_CONNECTED) {
             connectWifi();
         }
+        // Nếu sau '30000' (ms) không kết nối được thì restart 
+        if ((unsigned long)(millis() - currentMqttMillis)>=30000) {
+            ESP.restart();
+        }
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
-        if (mqttClient.connect(MQTT_CLIENTID, MQTT_USER, MQTT_PASS, TOPIC_LWT, 0, false, MESSAGE_LWT)) {
+        if (mqttClient.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS, TOPIC_LWT, 0, false, "offline")) {
             Serial.println("connected");
 
-            const size_t bufferSize = JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(7); //+JSON_OBJECT_SIZE(3);
+            const size_t bufferSize = JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(7); 
             DynamicJsonBuffer jsonBuffer(bufferSize);
 
-//            StaticJsonBuffer<400> jsonBuffer;
             JsonObject& root = jsonBuffer.createObject();
-            root["center"] = CENTER;
-            root["type"] = TYPE;
             root["location"] = LOCATION;
+            root["type"] = TYPE;
+            root["name"] = NAME;
             root["firmwareVersion"] = FIRMWARE_VERSION;
             root["macAddress"] = MAC_ADDRESS;
-//            root["macAddress"] = "FW";
 
             JsonObject& updateInfo = root.createNestedObject("updateInfo");
             updateInfo["server"] = host;
             updateInfo["port"] = port;
-            updateInfo["file1"] = bin_v10;
-            updateInfo["file2"] = bin_v11;
-            updateInfo["file3"] = bin_v12;
+            updateInfo["v10"] = bin_v10;
+            updateInfo["v11"] = bin_v11;
+            updateInfo["v12"] = bin_v12;
 
             JsonObject& deviceConfig = root.createNestedObject("deviceConfig");
-            deviceConfig["calibrationRatio"] = CALIB_RATIO;
+            deviceConfig["calibRatio"] = CALIB_RATIO;
             deviceConfig["TIRatio"] = TI_RATIO;
             deviceConfig["adcZero1"] = ADC_ZERO_1;
             deviceConfig["adcZero2"] = ADC_ZERO_2;
@@ -360,23 +366,19 @@ void reconnect() {
             // Wait 5 seconds before retrying
             delay(2000);
         }
-        // Nếu sau 'mqttTime' không kết nối được thì restart 
-        if ((unsigned long)(millis() - startMqttTime)>=mqttTime) {
-            ESP.restart();
-        }
     }
 }
 
 void loop() {
     
     // Kiểm tra kết nối với Mqtt Server
-    if (!client.connected()) {
+    if (!mqttClient.connected()) {
         reconnect();
     }
-
     mqttClient.loop();
 
-    if ((unsigned long)(millis() - startSendTime) >= sendTime) // send data in "endTime"
+    //Gửi data theo mỗi chu kỳ 5000 ms  
+    if ((unsigned long)(millis() - currentSendMillis) >= 5000) 
     {
         double data1, data2, data3;
 
@@ -403,12 +405,14 @@ void loop() {
         root.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
 
         if (mqttClient.publish(TOPIC_PUBLISH, JSONmessageBuffer)) {
-            startErrorTime = millis();
-        } else if ((unsigned long)(millis() - startErrorTime) >= errorTime) {
+            currentErrorMillis = millis();
+        }
+        //Nếu không gửi thành công sau thời gian 30000 ms thì restart device 
+        else if ((unsigned long)(millis() - currentErrorMillis) >= 30000) {
             ESP.restart();
         }
 
-        sendTime = millis();
+        currentSendMillis = millis();
     }
     
 }
