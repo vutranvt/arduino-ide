@@ -4,12 +4,12 @@
 //#define RAW_ADC    // send 'raw_adc' replace for 'result' 
 
 /* location */
- #define NTH
+ #define BMT
 
 /* wifi */
 #if defined(TEST)
-    #define WIFI_SSID "BLUE SKY"
-    #define WIFI_PASS "bluesky@nth"
+    #define WIFI_SSID "Phong Ky Thuat"
+    #define WIFI_PASS "123456789"
 #else 
   #if defined(NTH)
     #define WIFI_SSID "Phong Ky Thuat"

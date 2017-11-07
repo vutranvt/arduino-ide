@@ -37,11 +37,11 @@ PubSubClient mqttClient(client);
 
 // update firmware config
 String host = "113.161.21.15"; // Host => bucket-name.s3.region.amazonaws.com
-int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
-String bin_v10 = "/esp8266_game-v1.0.ino.nodemcu.bin";
-String bin_v11 = "/esp8266_game-v1.1.ino.nodemcu.bin";
-String bin_v12 = "/esp8266_game-v1.2.ino.nodemcu.bin";
-String FIRMWARE_VERSION = "1.0";    //// config 
+int port = 4000; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
+String bin_v10 = "/esp8266_game_v1.0.ino.nodemcu.bin";
+String bin_v11 = "/esp8266_game_v1.1.ino.nodemcu.bin";
+String bin_v12 = "/esp8266_game_v1.2.ino.nodemcu.bin";
+String FIRMWARE_VERSION = "1.1";    //// config 
 
 void updateFirmware(String binVersion) {
 
@@ -109,7 +109,7 @@ void setup() {
     WiFi.macAddress(mac);
     sprintf(MAC_ADDRESS, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     Serial.println(MAC_ADDRESS);
-    sprintf(MQTT_CLIENT, "ESP8266-%06X", ESP.getChipId());
+    sprintf(MQTT_CLIENT, "ESP8266-%02X%02X%02X%02X%02X%02X", mac[3], mac[4], mac[5], mac[0], mac[1], mac[2]);
     Serial.println(MQTT_CLIENT);
 
     mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
@@ -165,11 +165,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
     mySerial.print(jsonStr);
     mySerial.print('\r');
 
-    if (rxData=="update-v1.0") {
+    if (rxData=="update_v1.0") {
         updateFirmware(bin_v10);
-    } else if (rxData=="update-v1.1") {
+    } else if (rxData=="update_v1.1") {
         updateFirmware(bin_v11);
-    } else if (rxData=="update-v1.2") {
+    } else if (rxData=="update_v1.2") {
         updateFirmware(bin_v12);
     }
     Serial.print("subscribe: ");

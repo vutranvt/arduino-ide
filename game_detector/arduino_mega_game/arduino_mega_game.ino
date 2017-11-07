@@ -57,7 +57,7 @@ int preOut6 = HIGH;
 int preOut7 = HIGH;
 int preOut8 = HIGH;
 
-unsigned long currentSendMillis = 0;
+unsigned long currentOutLevelMillis = 0;
 unsigned long rxPulse = 5;	//xung (ms) nhận các pin ngõ vào
 unsigned long txPulse = 10;	//xung (ms) truyền các pin ngõ ra
 
@@ -130,8 +130,8 @@ void loop() {
     // int tempState = (in4<<3) | (in3<<2) | (in2<<1) | in1;
     int tempState = (in8<<7) | (in7<<6) | (in6<<5) | (in5<<4) | (in4<<3) | (in3<<2) | (in2<<1) | in1;
 
-//     Serial.print("tempState: ");
-//     Serial.println(tempState);
+    Serial.print("tempState: ");
+    Serial.println(tempState);
 
     // Kiểm tra Pin có thật sự xuống GND hay không
     // Nếu Pin được kích: true, không được kích: false
@@ -151,7 +151,7 @@ void loop() {
                     pinMode(OUT_PIN_1, OUTPUT);
                     digitalWrite(OUT_PIN_1, LOW);    
                     preIn1 = LOW;
-                    root[bc01] = "coin on";
+                    root[bc01] = "on";
                 } 
                 else if (in1==HIGH && preIn1==LOW) {    //Trạng thái pin: 0->1
                     preIn1 = HIGH;
@@ -160,7 +160,7 @@ void loop() {
                     pinMode(OUT_PIN_2, OUTPUT);
                     digitalWrite(OUT_PIN_2, LOW);
                     preIn2 = LOW;
-                    root[bc02] = "coin on";
+                    root[bc02] = "on";
                 } 
                 else if (in2==HIGH && preIn2==LOW) {    //Trạng thái pin: 0->1
                     preIn2 = HIGH;
@@ -169,7 +169,7 @@ void loop() {
                     pinMode(OUT_PIN_3, OUTPUT);
                     digitalWrite(OUT_PIN_3, LOW);
                     preIn3 = LOW;
-                    root[bc03] = "coin on";
+                    root[bc03] = "on";
                 } 
                 else if (in3==HIGH && preIn3==LOW) {    //Trạng thái pin: 0->1
                     preIn3 = HIGH;
@@ -178,7 +178,7 @@ void loop() {
                     pinMode(OUT_PIN_4, OUTPUT);
                     digitalWrite(OUT_PIN_4, LOW);
                     preIn4 = LOW;
-                    root[bc04] = "coin on";
+                    root[bc04] = "on";
                 } 
                 else if (in4==HIGH && preIn4==LOW) {    //Trạng thái pin: 0->1
                     preIn4 = HIGH;
@@ -187,7 +187,7 @@ void loop() {
                     pinMode(OUT_PIN_5, OUTPUT);
                     digitalWrite(OUT_PIN_5, LOW);
                     preIn5 = LOW;
-                    root[bc05] = "coin on";
+                    root[bc05] = "on";
                 } 
                 else if (in5==HIGH && preIn5==LOW) {    //Trạng thái pin: 0->1
                     preIn5 = HIGH;
@@ -196,7 +196,7 @@ void loop() {
                     pinMode(OUT_PIN_6, OUTPUT);
                     digitalWrite(OUT_PIN_6, LOW);
                     preIn6 = LOW;
-                    root[bc06] = "coin on";
+                    root[bc06] = "on";
                 } 
                 else if (in6==HIGH && preIn6==LOW) {    //Trạng thái pin: 0->1
                     preIn6 = HIGH;
@@ -205,7 +205,7 @@ void loop() {
                     pinMode(OUT_PIN_7, OUTPUT);
                     digitalWrite(OUT_PIN_7, LOW);
                     preIn7 = LOW;
-                    root[bc07] = "coin on";
+                    root[bc07] = "on";
                 } 
                 else if (in7==HIGH && preIn7==LOW) {    //Trạng thái pin: 0->1
                     preIn7 = HIGH;
@@ -214,7 +214,7 @@ void loop() {
                     pinMode(OUT_PIN_8, OUTPUT);
                     digitalWrite(OUT_PIN_8, LOW);
                     preIn8 = LOW;
-                    root[bc08] = "coin on";
+                    root[bc08] = "on";
                 } 
                 else if (in8==HIGH && preIn8==LOW) {    //Trạng thái pin: 0->1
                     preIn8 = HIGH;
@@ -318,38 +318,62 @@ void txOutPin () {
 
     // outState = (out4<<3) | (out3<<2) | (out2<<1) | out1;
     outState = (out8<<7) | (out7<<6) | (out6<<5) | (out5<<4) | (out4<<3) | (out3<<2) | (out2<<1) | out1;
-    // Serial.print("outState: ");
-    // Serial.println(outState);
+    Serial.print("outState: ");
+    Serial.println(outState);
+    delay(1000);
 
-    // Nếu Pin Out -> LOW: Gửi data Pin Out theo chu kỳ "500" (ms)
-    if (outState!=0xFF && ((unsigned long)(millis() - currentSendMillis) >= 500)) {
+    // Nếu Pin Out -> LOW: Gửi data Pin Out theo chu kỳ "2000" (ms)
+    if (outState!=0xFF && ((unsigned long)(millis() - currentOutLevelMillis) >= 2000)) {
 
         StaticJsonBuffer<200> jsonBuffer2;
         JsonObject& root2 = jsonBuffer2.createObject();
 
         if (out1==LOW) {           //pin out: 1->0
-            root2[bc01] = "board off";
+            root2[bc01] = "disconnected";
+        } else {
+            root2[bc01] = "connected";
         }
+
         if (out2==LOW) {           //pin out: 1->0
-            root2[bc02] = "board off";
+            root2[bc02] = "disconnected";
+        } else {
+            root2[bc02] = "connected";
         }
+
         if (out3==LOW) {           //pin out: 1->0
-            root2[bc03] = "board off";
+            root2[bc03] = "disconnected";
+        } else {
+            root2[bc03] = "connected";
         }
+
         if (out4==LOW) {           //pin out: 1->0
-            root2[bc04] = "board off";
+            root2[bc04] = "disconnected";
+        } else {
+            root2[bc04] = "connected";
         }
+
         if (out5==LOW) {           //pin out: 1->0
-            root2[bc05] = "board off";
+            root2[bc05] = "disconnected";
+        } else {
+            root2[bc05] = "connected";
         }
+
         if (out6==LOW) {           //pin out: 1->0
-            root2[bc06] = "board off";
+            root2[bc06] = "disconnected";
+        } else {
+            root2[bc06] = "connected";
         }
+
         if (out7==LOW) {           //pin out: 1->0
-            root2[bc07] = "board off";
+            root2[bc07] = "disconnected";
+        } else {
+            root2[bc07] = "connected";
         }
+
         if (out8==LOW) {           //pin out: 1->0
-            root2[bc08] = "board off";
+            root2[bc08] = "disconnected";
+        } else {
+            root2[bc08] = "connected";
         }
 
         mySerial.print('arduino');
@@ -359,7 +383,7 @@ void txOutPin () {
 
         Serial.println();
         root2.printTo(Serial);
-        currentSendMillis = millis();        
+        currentOutLevelMillis = millis(); 
     }
 
 }

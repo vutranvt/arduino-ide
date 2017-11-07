@@ -5,12 +5,25 @@
 #include <LiquidCrystal_I2C.h>
 #include <Update.h>
 #include "user_config.h"
+#include <WiFiMulti.h>
 
-#define TEST_IN_PIN 14  // D5
-#define TEST_OUT_PIN 12 // D6
+#define TEST_INPIN 0
+#define TEST_OUTPIN 16
+
+#define SSID_1 "Phong Ky Thuat"
+#define PASS_1 "123456789"
+#define SSID_2 "STARLIGHT"
+#define PASS_2 "starlight123"
+#define SSID_3 "Ban Dau Tu"
+#define PASS_3 "bdtnth123"
+
 
 WiFiClient client;
 PubSubClient mqttClient(client);
+// Khai báo biến wifiMulti thuộc class WiFiMulti để sử dụng các chức năng của class này.
+WiFiMulti wifiMulti;
+// Biến connectioWasAlive nhằm kiểm tra kết nối của ESP32 đến mạng wifi.
+boolean connectioWasAlive = true;
 
 /* mqtt*/
 #define MQTT_SERVER "113.161.21.15"
@@ -36,10 +49,10 @@ char MQTT_CLIENT[64];
 
 /* update firmware */
 String host = "113.161.21.15"; // Host => bucket-name.s3.region.amazonaws.com
-int port = 8267; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
-String bin_v10 = "/esp32_current-v1.0.ino.esp32.bin";
-String bin_v11 = "/esp32_current-v1.1.ino.esp32.bin";
-String bin_v12 = "/esp32_current-v1.2.ino.esp32.bin";
+int port = 4000; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
+String bin_v10 = "/esp32_current_v1.0.ino.esp32.bin";
+String bin_v11 = "/esp32_current_v1.1.ino.esp32.bin";
+String bin_v12 = "/esp32_current_v1.2.ino.esp32.bin";
 String FIRMWARE_VERSION = "1.0";    //// config 
 
 int contentLength = 0;
@@ -197,9 +210,9 @@ void execOTA(String binFile) {
 
 void setup() {
 
-    pinMode(TEST_IN_PIN, INPUT_PULLUP);
-    pinMode(TEST_OUT_PIN, OUTPUT);
-    digitalWrite(TEST_OUT_PIN, HIGH);
+    pinMode(TEST_INPIN, INPUT_PULLUP);
+    pinMode(TEST_OUTPIN, OUTPUT);
+    digitalWrite(TEST_OUTPIN, LOW);
 
     Serial.begin(115200);
     delay(100);
@@ -208,32 +221,20 @@ void setup() {
     Serial.print("Firmware Version: ");
     Serial.println(FIRMWARE_VERSION);
 
-    // connect Wifi
-    Serial.println();
-    Serial.print("Connecting to ");
-    Serial.println(WIFI_SSID);
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-    unsigned long currentWifiMillis = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-        // Nếu không có wifi: Restart sau '60000' ms
-        if ((unsigned long)(millis() - currentWifiMillis) >= 60000) {
-            ESP.restart();
-        }
-    }
-
-    Serial.println();
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+      // Add vào các mạng wifi mà ESP8266 được chỉ định sẽ kết nối
+//    wifiMulti.addAP(SSID_1, PASS_1);
+//    wifiMulti.addAP(SSID_2, PASS_2);
+//    wifiMulti.addAP(SSID_3, PASS_3);
+//    monitorWiFi();
+//    Serial.printf(" connected to %s\n", WiFi.SSID().c_str());
+    
+     WiFi.begin(WIFI_SSID, WIFI_PASS);    
+     connectWifi();
 
     // get chip id (về bản chất là mac address)
     WiFi.macAddress(mac);
     sprintf(MAC_ADDRESS, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    sprintf(MQTT_CLIENT, "ESP32-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    sprintf(MQTT_CLIENT, "ESP32-%02X%02X%02X%02X%02X%02X", mac[3], mac[4], mac[5], mac[0], mac[1], mac[2]);
     Serial.println(MAC_ADDRESS);    
     
     // config Mqtt
@@ -262,13 +263,8 @@ void setup() {
 }
 
 void connectWifi() {
+    
     // We start by connecting to a WiFi network
-    Serial.println();
-    Serial.print("Connecting to ");
-    Serial.println(WIFI_SSID);
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-
     unsigned long currentWifiMillis = millis();
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
@@ -278,11 +274,41 @@ void connectWifi() {
             ESP.restart();
         }
     }
+    digitalWrite(TEST_OUTPIN, HIGH);
     Serial.println("");
-    Serial.println("WiFi connected");
+    Serial.print("WiFi connected to :");
+    Serial.println(SSID_1);
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
+}
+
+void monitorWiFi()
+{
+    unsigned long currentWifiMillis = millis();
+    // Kiểm tra nếu chưa kết nối đến 1 mạng wifi nào sẽ cài đặt connectioWasAlive = false
+    // đồng thời in ra dấu "." sau mỗi 500ms nếu chưa được kết nối.
+    if (wifiMulti.run() != WL_CONNECTED) {   
+        
+        if (connectioWasAlive == true) {
+            connectioWasAlive = false;
+            Serial.print("Looking for WiFi ");
+        }
+        Serial.print(".");
+        delay(500);
+        // Nếu trong '60000'ms không có kết nối thì restart 
+        if ((unsigned long)(millis() - currentWifiMillis)>=60000) {
+            ESP.restart();
+        }
+    }
+    // Nếu đã kết nối đến 1 trong các mạng wifi sẽ in ra tên mạng wifi và set connectioWasAlive = true
+    // để khi mất kết nối chương trình sẽ vào phần if (connectioWasAlive == true) nhằm thông báo đang
+    // tìm kiếm mạng wifi
+    else if (connectioWasAlive == false) {
+        connectioWasAlive = true;
+//        Serial.printf(" connected to %s\n", WiFi.SSID().c_str());
+    }
+    Serial.printf(" connected to %s\n", WiFi.SSID().c_str());
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -314,9 +340,12 @@ void reconnect() {
     // Loop until we're reconnected
     while (!mqttClient.connected()) {
         // Kiểm tra kết nối Wifi
-        while (WiFi.status() != WL_CONNECTED) {
-            connectWifi();
-        }
+//        monitorWiFi();
+         while (WiFi.status() != WL_CONNECTED) {
+             digitalWrite(TEST_OUTPIN, LOW);
+             connectWifi();
+         }
+        
         // Nếu sau '30000' (ms) không kết nối được thì restart 
         if ((unsigned long)(millis() - currentMqttMillis)>=30000) {
             ESP.restart();
