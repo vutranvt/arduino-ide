@@ -4,7 +4,7 @@
 //#define RAW_ADC    // send 'raw_adc' replace for 'result' 
 
 /* location */
- #define BMT
+ #define TEST
 
 /* wifi */
 #if defined(TEST)
