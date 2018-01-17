@@ -359,9 +359,9 @@ void reconnect() {
             DynamicJsonBuffer jsonBuffer(bufferSize);
 
             JsonObject& root = jsonBuffer.createObject();
-            root["location"] = LOCATION;
-            root["type"] = TYPE;
-            root["name"] = NAME;
+            // root["location"] = LOCATION;
+            // root["type"] = TYPE;
+            // root["name"] = NAME;
             root["firmwareVersion"] = FIRMWARE_VERSION;
             root["macAddress"] = MAC_ADDRESS;
 
