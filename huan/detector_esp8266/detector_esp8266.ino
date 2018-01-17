@@ -33,76 +33,37 @@ extern "C" {
 #include "user_interface.h"
 }
 
-// #define UP_PIN 5        // D1
-// #define DOWN_PIN 4      // D2
-// #define LEFT_PIN 14     // D5
-// #define RIGHT_PIN 12    // D6
-// #define DETECT_PIN 13   // D7
-// #define DETECT_PIN 9   // SD2
-// #define DETECT_PIN2 10   // SD3
+byte mac[6];
+char MAC_ADDRESS[50];
+char MQTT_CLIENT[64];
+unsigned long currentPublishMillis = 0;
 
-// config device command
-const char* server_arduino = "server_arduino";
-const char* esp_arduino = "esp_arduino";
-
-// config request command
-#define chip_id_request "chip_id_request"
-#define mac_address_request "mac_address_request"
-#define data "data"
-
-int state = HIGH;   // state mức cao: chưa phát hiện
-int previousState = 0;    
-
-int detectValue = 512;
-
-String chipIdEsp = "";
-String mac_address = "";
-
-const byte RX = 4;
-const byte TX = 5;
+const byte RX = 4;  // D2
+const byte TX = 5;  // D1
 
 SoftwareSerial mySerial(RX, TX, false, 256);
 SerialCommand sCmd(mySerial); // Khai báo biến sử dụng thư viện Serial Command
 
 // Update these with values suitable for your network.
-const char* SSID = "dlink_DWR-710_CA58";
-const char* PASSWORD = "RXbgc83862";
+//const char* SSID = "dlink_DWR-710_CA58";
+//const char* PASSWORD = "RXbgc83862";
+const char* SSID = "Phong Ky Thuat";
+const char* PASSWORD = "123456789";
 const char* MQTT_SERVER = "113.161.21.15";
+const int MQTT_PORT = 1884;
+const char *MQTT_USER = "esp32";
+const char *MQTT_PASS = "mtt@23377";
 
-const char* PUBLISH_TOPIC = "miner";
+const char* PUBLISH_TOPIC = "detector";
 const char* SUBSCRIBE_TOPIC = "controller";
 
-const char* get_chipID = "get_chipID";
-uint32_t chipID;
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
-//StaticJsonBuffer<200> jsonBuffer;
-
-long lastMsg = 0;
-char msg[50];
-int value = 0;
-
-
+WiFiClient client;
+PubSubClient mqttClient(client);
 
 void setup() {
 
-    // pinMode(UP_PIN, OUTPUT);
-    // pinMode(DOWN_PIN, OUTPUT);
-    // pinMode(RIGHT_PIN, OUTPUT);
-    // pinMode(LEFT_PIN, OUTPUT);
-    // pinMode(DETECT_PIN, INPUT_PULLUP);
-    // pinMode(DETECT_PIN2, OUTPUT);
-
-    // digitalWrite(UP_PIN, HIGH);
-    // digitalWrite(DOWN_PIN, HIGH);
-    // digitalWrite(LEFT_PIN, HIGH);
-    // digitalWrite(RIGHT_PIN, HIGH);
-    // digitalWrite(DETECT_PIN2, HIGH);
-
     Serial.begin(115200);
-    mySerial.begin(57600); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
+    mySerial.begin(9600); //Bật software serial để giao tiếp với Arduino, nhớ để baudrate trùng với software serial trên mạch arduino
     
     delay(10);
 
@@ -114,9 +75,15 @@ void setup() {
 
     WiFi.begin(SSID, PASSWORD);
 
-    while (WiFi.status() != WL_CONNECTED) {
+    unsigned long currentWifiMillis = millis();
+    while (WiFi.status() != WL_CONNECTED)
+    {
         delay(500);
         Serial.print(".");
+        if ((unsigned long)(millis() - currentWifiMillis) >= 60000)
+        {
+            ESP.restart();
+        }
     }
 
     Serial.println("");
@@ -124,36 +91,47 @@ void setup() {
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
-    client.setServer(MQTT_SERVER, 1884);
-    client.setCallback(callback);
+    // get chip id (về bản chất là mac address)
+    WiFi.macAddress(mac);
+    sprintf(MAC_ADDRESS, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    Serial.println(MAC_ADDRESS);
+    sprintf(MQTT_CLIENT, "ESP8266-%02X%02X%02X%02X%02X%02X", mac[3], mac[4], mac[5], mac[0], mac[1], mac[2]);
+    Serial.println(MQTT_CLIENT);
 
-    // chipID = ESP.getChipId();
-    // sCmd.addDefaultHandler(defaultCommand);
+    mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
+    mqttClient.setCallback(callback);
+    currentPublishMillis = millis();
 
     // Một số hàm trong thư viện Serial Command
-    // sCmd.addCommand(server_arduino, requestResponse);   //Khi có lệnh thì thực hiện hàm "rxRequestServer"
     // sCmd.addCommand(esp_arduino, rxRequest);        //Khi có lệnh thì thực hiện hàm "rxResponseEsp"
     sCmd.addDefaultHandler(defaultCommand);
 
 }
 
-void connectWifi() {
+void connectWifi()
+{
     // We start by connecting to a WiFi network
     Serial.println();
     Serial.print("Connecting to ");
     Serial.println(SSID);
 
     WiFi.begin(SSID, PASSWORD);
-    delay(500);
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Not connect");
-    } else {
-        Serial.println("");
-        Serial.println("WiFi connected");
-        Serial.println("IP address: ");
-        Serial.println(WiFi.localIP());
-    }
 
+    unsigned long currentWifiMillis = millis();
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+        // Nếu trong 60s không có kết nối thì restart
+        if ((unsigned long)(millis() - currentWifiMillis) >= 60000)
+        {
+            ESP.restart();
+        }
+    }
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -192,35 +170,43 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 
 void reconnect() {
+    unsigned long currentMqttMillis = millis();
     // Loop until we're reconnected
-    while (!client.connected()) {
+    while (!mqttClient.connected()) {
+        // Kiểm tra kết nối Wifi
+        while (WiFi.status() != WL_CONNECTED)
+        {
+            connectWifi();
+        }
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
-        if (client.connect("ESP8266Client", "esp32", "mtt@23377")) {
+        if (mqttClient.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS, "detector/lwt", 1, false, "offline"))
+        {
             Serial.println("connected");
             // Once connected, publish an announcement...
-            client.publish(PUBLISH_TOPIC, "hello world");
+            mqttClient.publish(PUBLISH_TOPIC, "hello world");
             // ... and resubscribe
-            client.subscribe(SUBSCRIBE_TOPIC);
+            mqttClient.subscribe(SUBSCRIBE_TOPIC);
         } else {
             Serial.print("failed, rc=");
-            Serial.print(client.state());
-            Serial.println(" try again in 5 seconds");
+            Serial.print(mqttClient.state());
+            Serial.println(" try again in 2 seconds");
             // Wait 5 seconds before retrying
-            delay(5000);
+            delay(2000);
+        }
+        // Nếu sau '60s' không kết nối được thì restart
+        if ((unsigned long)(millis() - currentMqttMillis) >= 60000)
+        {
+            ESP.restart();
         }
     }
 }
 void loop() {
-    // Kiểm tra kết nối Wifi
-    while (WiFi.status() != WL_CONNECTED) {
-        connectWifi();
-    }
     // Kiểm tra kết nối Mqtt Server
-    if (!client.connected()) {
+    if (!mqttClient.connected()) {
         reconnect();
     }
-    client.loop();  //
+    mqttClient.loop();  //
 
     sCmd.readSerial();  //
 
@@ -231,7 +217,7 @@ void defaultCommand(String command) {
 
     Serial.println(json);
     
-    client.publish(PUBLISH_TOPIC, json);
+    mqttClient.publish(PUBLISH_TOPIC, json);
 }
 
 

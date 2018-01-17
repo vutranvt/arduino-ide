@@ -188,7 +188,7 @@ void reconnect() {
         }
         Serial.print("Attempting MQTT connection...");
         // Attempt to connect
-        if (mqttClient.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS, TOPIC_LWT, 0, false, "offline")) {
+        if (mqttClient.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS, TOPIC_LWT, 1, false, "offline")) {
             Serial.println("connected");
             const size_t bufferSize = JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(5)+JSON_OBJECT_SIZE(7); //+JSON_OBJECT_SIZE(3);
             DynamicJsonBuffer jsonBuffer(bufferSize);
